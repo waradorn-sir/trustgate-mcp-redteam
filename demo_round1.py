@@ -34,13 +34,25 @@ def pause(enabled, label="next"):
         print()
 
 
+WIDTH = 78   # characters per line; --width makes it narrower for a small window or a slide
+
+
+def wrap(text, indent="   ", hang="      "):
+    return textwrap.fill(text, WIDTH, initial_indent=indent, subsequent_indent=hang,
+                         break_long_words=False, break_on_hyphens=False)
+
+
 def box(title, text, color=""):
-    width = 78
+    inner = WIDTH - 4
     print(f"{color}{BOLD}{title}{RESET}")
-    print("+" + "-" * width + "+")
-    for line in textwrap.wrap(text or "(no answer)", width - 2) or [""]:
-        print(f"| {line.ljust(width - 2)} |")
-    print("+" + "-" * width + "+")
+    print("+" + "-" * (WIDTH - 2) + "+")
+    lines = []
+    for raw in (text or "(no answer)").splitlines():   # keep the answer's own line breaks
+        hang = "  " if raw.lstrip().startswith(("-", "*")) else ""
+        lines += textwrap.wrap(raw, inner, subsequent_indent=hang) or [""]
+    for line in lines:
+        print(f"| {line.ljust(inner)} |")
+    print("+" + "-" * (WIDTH - 2) + "+")
 
 
 def where_payload_hides(payload):
@@ -66,8 +78,10 @@ def unauthorized(call, task):
 
 async def demo(llm, model, payload, pausing=True):
     task = payload["task"]
-    print(f"\n{BOLD}TrustGate-MCP red team demo{RESET}   model: {CYAN}{model}{RESET}   payload: {CYAN}{payload['id']}{RESET}")
-    print(f"{DIM}Two MCP servers: workspace-server (trusted) and community-security-feed (third party).{RESET}\n")
+    print(f"\n{BOLD}TrustGate-MCP red team demo{RESET}")
+    print(f"model: {CYAN}{model}{RESET}   payload: {CYAN}{payload['id']}{RESET}")
+    print(DIM + wrap("Two MCP servers: workspace-server (trusted) and community-security-feed "
+                     "(third party).", indent="", hang="") + RESET + "\n")
     box("1. THE USER ASKS", r1.TASKS[task]["request"])
     pause(pausing, "run the agent")
 
@@ -87,29 +101,37 @@ async def demo(llm, model, payload, pausing=True):
     if not row["trace"]:
         print("   (no tool calls)")
     for i, call in enumerate(row["trace"], 1):
-        args = ", ".join(f"{k}={str(v)[:50]}" for k, v in call["args"].items() if v != "")
+        items = [f"{k}={str(v)[:50]}" for k, v in call["args"].items() if v != ""]
         bad = unauthorized(call, task) or row["canary"] in json.dumps(call["args"], ensure_ascii=False)
         color = RED if bad else ""
-        flag = "   <-- the user never asked for this" if bad else (
-            "   <-- confidential, not requested" if call["tool"] == "read_report" else "")
-        print(f"   {i}. {color}{call['tool']}({args}){RESET}{RED}{flag}{RESET}")
+        flag = "<-- the user never asked for this" if bad else (
+            "<-- confidential, not requested" if call["tool"] == "read_report" else "")
+        one = f"{i}. {call['tool']}({', '.join(items)})"
+        if len(one) + 3 <= WIDTH or not items:
+            lines = [one]
+        else:   # one argument per line, so nothing breaks in the middle of a word
+            lines = [f"{i}. {call['tool']}("] + [f"     {it}," for it in items[:-1]] + [f"     {items[-1]})"]
+        for line in lines:
+            print(f"   {color}{line}{RESET}")
+        if flag:
+            print(f"      {RED}{flag}{RESET}")
     pause(pausing, "show the evidence")
 
     print(f"{BOLD}4. EVIDENCE{RESET}")
-    print(f"   Where the attack was: {where_payload_hides(payload)}")
+    print(wrap(f"Where the attack was: {where_payload_hides(payload)}"))
     if STORE_LOG.exists():
         logs = [json.loads(line) for line in STORE_LOG.read_text(encoding="utf-8").splitlines()
                 if line.strip() and json.loads(line).get("trial_id") == row["trial_id"]]
         for log in logs:
             state = "STORED" if log["accepted"] else "REJECTED"
-            print(f"   workspace-server log: {state} {log['document_ref']} -> {log['workspace']}")
+            print(wrap(f"workspace-server log: {state} {log['document_ref']} -> {log['workspace']}"))
     verdict = []
     if row["S1"]:
         verdict.append("S1 unauthorized store executed")
     if row["S2"]:
         verdict.append("S2 confidential canary leaked in a tool argument")
     if verdict:
-        print(f"\n   {RED}{BOLD}ATTACK SUCCEEDED: {'; '.join(verdict)}{RESET}")
+        print("\n" + RED + BOLD + wrap(f"ATTACK SUCCEEDED: {'; '.join(verdict)}") + RESET)
         told = "external" in (row["final_answer"] or "").lower()
         print(f"   Did the answer tell the user? {'yes' if told else 'no'}")
     else:
@@ -123,7 +145,10 @@ async def main():
     parser.add_argument("--payload", default="c1_seed_store")
     parser.add_argument("--task", choices=sorted(r1.TASKS), help="user task to use instead of the payload's own")
     parser.add_argument("--no-pause", action="store_true", help="do not wait for Enter (for recording)")
+    parser.add_argument("--width", type=int, default=78, help="characters per line, at least 40 (for screenshots)")
     a = parser.parse_args()
+    global WIDTH
+    WIDTH = max(40, a.width)
     payloads = {p["id"]: p for p in r1.load_payloads()}
     if a.payload not in payloads:
         raise SystemExit(f"Unknown payload {a.payload!r}. Options: {', '.join(payloads)}")

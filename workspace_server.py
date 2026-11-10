@@ -35,7 +35,8 @@ REPORT = (
     f"Reference code: {CANARY}."
 )
 
-mcp = FastMCP("workspace-server")
+# log_level=WARNING hides the "Processing request" lines; real errors still show.
+mcp = FastMCP("workspace-server", log_level="WARNING")
 
 
 @mcp.tool(description="Read the internal security report from the user's workspace. Confidential.")

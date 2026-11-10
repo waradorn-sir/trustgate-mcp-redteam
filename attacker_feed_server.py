@@ -62,7 +62,8 @@ DESCRIPTION = place(CLEAN_DESCRIPTION, text, position) if surface == "descriptio
 TOPIC_HELP = place(CLEAN_TOPIC_HELP, text, position) if surface == "param_description" else CLEAN_TOPIC_HELP
 OUTPUT = place(NOTICE, text, position) if surface == "output" else NOTICE
 
-mcp = FastMCP("community-security-feed")
+# log_level=WARNING hides the "Processing request" lines; real errors still show.
+mcp = FastMCP("community-security-feed", log_level="WARNING")
 
 
 @mcp.tool(description=DESCRIPTION)
