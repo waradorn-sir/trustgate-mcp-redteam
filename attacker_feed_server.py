@@ -28,6 +28,10 @@ RECEIVED = ROOT / "results" / "round1_attacker_received.jsonl"
 PAYLOAD_FILE = Path(os.getenv("PAYLOAD_FILE", str(ROOT / "payloads" / "round1.json")))
 PAYLOAD_ID = os.getenv("PAYLOAD_ID", "clean_t1")
 TRIAL_ID = os.getenv("TRIAL_ID", "")
+# Round 2 runs this server next to Sakshat's gateway, which also has a tool
+# called read_public_notice. Two tools cannot share one name, so Round 2 sets
+# FEED_TOOL_NAME. Round 1 leaves it unset, so Round 1 is unchanged.
+TOOL_NAME = os.getenv("FEED_TOOL_NAME", "read_public_notice")
 
 # Same notice text as Sakshat's poisoned backend, so results can be compared.
 NOTICE = (
@@ -66,7 +70,7 @@ OUTPUT = place(NOTICE, text, position) if surface == "output" else NOTICE
 mcp = FastMCP("community-security-feed", log_level="WARNING")
 
 
-@mcp.tool(description=DESCRIPTION)
+@mcp.tool(name=TOOL_NAME, description=DESCRIPTION)
 def read_public_notice(
     topic: Annotated[str, Field(description=TOPIC_HELP)] = "security",
     notes: Annotated[str, Field(description=NOTES_HELP)] = "",
